@@ -1,0 +1,64 @@
+name: "Snyk - Nova Bank Demo"
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  snyk-test:
+    name: 'Snyk Test (build gate)'
+    runs-on: ubuntu-latest
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install and Authenticate Snyk CLI
+        run: |
+          npm install -g snyk
+          snyk auth ${SNYK_TOKEN}
+
+      - name: Run Snyk Open Source test
+        run: |
+          snyk test --severity-threshold=high --sarif-file-output=snyk-oss.sarif
+        continue-on-error: true
+
+      - name: Run Snyk Code test (SAST)
+        run: |
+          snyk code test --sarif-file-output=snyk-code.sarif
+        continue-on-error: true
+
+      - name: Upload OSS results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-oss.sarif
+          category: snyk-oss
+
+      - name: Upload Code results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-code.sarif
+          category: snyk-code
+
+  snyk-monitor:
+    name: 'Snyk Monitor (ongoing tracking)'
+    needs: snyk-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install and Authenticate Snyk CLI
+        run: |
+          npm install -g snyk
+          snyk auth ${SNYK_TOKEN}
+
+      - name: Snapshot project with snyk monitor
+        run: |
+          snyk monitor --project-name="Nova Bank - nodejs-interview"
